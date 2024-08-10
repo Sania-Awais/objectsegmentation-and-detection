@@ -10,7 +10,8 @@ from PIL import Image
 import io
 import numpy as np
 from transformers import AutoImageProcessor, SegformerForSemanticSegmentation
-from ultralytics import YOLO  # Ensure you have ultralytics installed
+from ultralytics import YOLO
+import bcrypt  # Add bcrypt for password hashing
 
 # Initialize the FastAPI app
 app = FastAPI()
@@ -18,7 +19,7 @@ app = FastAPI()
 # Set up CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Update this for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,7 +63,7 @@ def process_image(image: Image.Image):
 
 def detect_objects(image: Image.Image):
     results = yolo_model(image)
-    detections = results.pandas().xyxy[0].to_dict(orient="records")  # Get detections as a list of dictionaries
+    detections = results.pandas().xyxy[0].to_dict(orient="records")
     return detections
 
 @app.post("/segment/")
@@ -91,7 +92,7 @@ async def segment(file: UploadFile = File(...)):
             "detections": detections
         }
     except Exception as e:
-        print(f"Internal Server Error: {e}")
+        logger.error(f"Internal Server Error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 # Signup endpoint
@@ -100,7 +101,12 @@ def signup(user: User):
     try:
         if collection.find_one({"email": user.email}):
             raise HTTPException(status_code=400, detail="Email already registered")
-        collection.insert_one(user.dict())
+        
+        # Hash password before storing
+        hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt())
+        user_dict = user.dict()
+        user_dict['password'] = hashed_password
+        collection.insert_one(user_dict)
         return {"status": "User created"}
     except Exception as e:
         logger.error(f"Signup failed: {e}")
@@ -111,8 +117,8 @@ def signup(user: User):
 def login(user: LoginUser):
     try:
         logger.info(f"Attempting login for user: {user.email}")
-        db_user = collection.find_one({"email": user.email, "password": user.password})
-        if db_user:
+        db_user = collection.find_one({"email": user.email})
+        if db_user and bcrypt.checkpw(user.password.encode('utf-8'), db_user['password']):
             logger.info(f"Login successful for user: {user.email}")
             return {"status": "Login successful"}
         logger.warning(f"Invalid credentials for user: {user.email}")
