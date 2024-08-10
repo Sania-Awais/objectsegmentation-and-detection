@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import axios from 'axios';
 import './Upload.css';
 
-const Upload = ({ onDetection, onSegmentation }) => {
+const Upload = () => {
   const fileInputRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [detectionResult, setDetectionResult] = useState(null);
@@ -46,32 +46,34 @@ const Upload = ({ onDetection, onSegmentation }) => {
     formData.append('file', file);
 
     try {
-      // Detection request
-      const detectionResponse = await axios.post('http://127.0.0.1:5000/predict/', formData, {
+      // POST request to the /segment/ endpoint
+      const response = await axios.post('http://127.0.0.1:5000/segment/', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      const { image: detectionImage, objects } = detectionResponse.data;
+      
+      // Process the response data
+      const { segmentation, detections } = response.data;
+      
+      // Convert segmentation result to base64 for image display
+      const segmentationBase64 = btoa(
+        new Uint8Array(segmentation).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+
       setDetectionResult({
-        objects,
-        image: `data:image/jpeg;base64,${btoa(
-          new Uint8Array(detectionImage).reduce((data, byte) => data + String.fromCharCode(byte), '')
-        )}`
+        objects: detections,
+        image: `data:image/jpeg;base64,${segmentationBase64}`
       });
 
-      // Segmentation request
-      const segmentationResponse = await axios.post('http://127.0.0.1:5000/predict_segmentation/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      const { image: segImage, results } = segmentationResponse.data;
+      // Convert segmentation result to base64 for image display
+      const segmentationBase64Image = btoa(
+        new Uint8Array(segmentation).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+
       setSegmentationResult({
-        results,
-        image: `data:image/png;base64,${btoa(
-          new Uint8Array(segImage).reduce((data, byte) => data + String.fromCharCode(byte), '')
-        )}`
+        results: detections, // You might need to adjust this if segmentation results are different
+        image: `data:image/png;base64,${segmentationBase64Image}`
       });
 
     } catch (error) {
@@ -108,7 +110,7 @@ const Upload = ({ onDetection, onSegmentation }) => {
         />
       </div>
       <div className="upload-actions">
-      <button className="cancel-button" onClick={handleCancelClick}>
+        <button className="cancel-button" onClick={handleCancelClick}>
           Cancel
         </button>
         <button className="upload-button" onClick={handleUploadClick}>
@@ -154,4 +156,3 @@ const Upload = ({ onDetection, onSegmentation }) => {
 };
 
 export default Upload;
-
